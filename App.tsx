@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Header from './components/Header';
 import ResultsCard from './components/ResultsCard';
-import { InsuranceType, CalculationMode, CalculationResult, CalculatorTab, DiscountState } from './types';
-import { MULTIPLIERS, TYPE_LABELS, DISCOUNT_DATA, CURRENCY_FORMATTER } from './constants';
+import { InsuranceType, CalculationMode, CalculationResult, CalculatorTab, DiscountState, CSLLimit } from './types';
+import { MULTIPLIERS, TYPE_LABELS, DISCOUNT_DATA, CURRENCY_FORMATTER, CSL_MULTIPLIERS } from './constants';
 
 // ─── Color tokens ────────────────────────────────────────────────
 const C = {
@@ -59,6 +59,12 @@ const App: React.FC = () => {
   const [monthlyIncome, setMonthlyIncome] = useState('');
   const [numKids, setNumKids]             = useState('');
 
+  // CSL
+  const [cslLimit, setCslLimit]                 = useState<CSLLimit>('1M');
+  const [cslCurrentLiability, setCslCurrentLiability] = useState('');
+  const [cslCurrentTotal, setCslCurrentTotal]         = useState('');
+  const [cslMinLiability, setCslMinLiability]         = useState('');
+
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setResult(null); }, [activeTab]);
@@ -80,6 +86,7 @@ const App: React.FC = () => {
     setAmount(''); setCurOdo(''); setPrevOdo(''); setDiscountBase('');
     setBundlePremium(''); setCurrentPremium(''); setQuotedPremium('');
     setSqft(''); setMonthlyIncome(''); setNumKids('');
+    setCslCurrentLiability(''); setCslCurrentTotal(''); setCslMinLiability('');
   };
 
   const calculate = useCallback(() => {
@@ -161,16 +168,34 @@ const App: React.FC = () => {
         details: { numKids: kids, incomeNeed: income * 120, kidsNeed: kids * 100000 } };
     }
 
+    else if (activeTab === CalculatorTab.CSL) {
+      const curLiability = parseFloat(cslCurrentLiability);
+      const curTotal = parseFloat(cslCurrentTotal);
+      const minLiability = parseFloat(cslMinLiability);
+      if (isNaN(curLiability) || isNaN(curTotal) || isNaN(minLiability)) return;
+
+      // Formula 1: increased liability cost
+      const increasedLiability = minLiability * CSL_MULTIPLIERS[cslLimit];
+      // Formula 2: baseline cost of all other coverages
+      const baseline = curTotal - curLiability;
+      // Formula 3: new estimated 6-month premium
+      const newPremium = increasedLiability + baseline;
+
+      newResult = { inputAmount: minLiability, outputAmount: newPremium, tab: CalculatorTab.CSL,
+        details: { limit: cslLimit, curLiability, curTotal, minLiability, increasedLiability, baseline } };
+    }
+
     if (newResult) setResult(newResult);
   }, [activeTab, amount, type, mode, curOdo, curDate, prevOdo, prevDate, discountBase, discountFreq,
-      selectedDiscounts, liveAdjustedPremium, bundlePremium, currentPremium, quotedPremium, sqft, costPerSqft, monthlyIncome, numKids]);
+      selectedDiscounts, liveAdjustedPremium, bundlePremium, currentPremium, quotedPremium, sqft, costPerSqft, monthlyIncome, numKids,
+      cslLimit, cslCurrentLiability, cslCurrentTotal, cslMinLiability]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') calculate(); };
   const handleDiscountToggle = (id: string, state: DiscountState) =>
     setSelectedDiscounts(prev => ({ ...prev, [id]: state }));
 
-  const tabs = [CalculatorTab.PREMIUM, CalculatorTab.DIFFERENCE, CalculatorTab.DISCOUNTS, CalculatorTab.MILES, CalculatorTab.REBUILD, CalculatorTab.LIFE];
-  const tabLabel = (t: CalculatorTab) => ({ PREMIUM: 'Premium', DIFFERENCE: 'Difference', DISCOUNTS: 'Discounts', MILES: 'Miles', REBUILD: 'Sq Ft', LIFE: 'Life' }[t]);
+  const tabs = [CalculatorTab.PREMIUM, CalculatorTab.DIFFERENCE, CalculatorTab.DISCOUNTS, CalculatorTab.MILES, CalculatorTab.REBUILD, CalculatorTab.LIFE, CalculatorTab.CSL];
+  const tabLabel = (t: CalculatorTab) => ({ PREMIUM: 'Premium', DIFFERENCE: 'Difference', DISCOUNTS: 'Discounts', MILES: 'Miles', REBUILD: 'Sq Ft', LIFE: 'Life', CSL: 'CSL' }[t]);
 
   // Shared input style
   const inputCls = "w-full bg-transparent border-b py-2 outline-none text-xl";
@@ -421,6 +446,41 @@ const App: React.FC = () => {
                   <input type="number" value={numKids} onChange={e => setNumKids(e.target.value)}
                     onKeyDown={handleKeyDown} placeholder="0" className={inputCls} style={inputStyle} />
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* CSL */}
+          {activeTab === CalculatorTab.CSL && (
+            <div className="space-y-8">
+              <h2 className="text-center text-2xl" style={{ color: C.burgundy, fontFamily: serif }}>Two Become One</h2>
+
+              <div className="flex border rounded-full p-1 max-w-xs mx-auto" style={{ borderColor: C.sand, backgroundColor: C.cream }}>
+                {(['1M', '2M'] as CSLLimit[]).map(l => (
+                  <button key={l} onClick={() => setCslLimit(l)}
+                    className="flex-1 py-2 rounded-full text-xs tracking-[0.2em] uppercase transition-all"
+                    style={cslLimit === l ? { backgroundColor: C.burgundy, color: C.white, fontFamily: serif } : { color: C.espresso, fontFamily: serif }}>
+                    {l === '1M' ? '$1 Million' : '$2 Million'}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-6 max-w-xs mx-auto">
+                {[
+                  { label: 'Current Liability Cost', val: cslCurrentLiability, set: setCslCurrentLiability, ref: inputRef },
+                  { label: 'Current Total Cost',      val: cslCurrentTotal,     set: setCslCurrentTotal,     ref: undefined },
+                  { label: 'Minimum Liability Cost',  val: cslMinLiability,     set: setCslMinLiability,     ref: undefined },
+                ].map(({ label, val, set, ref }) => (
+                  <div key={label} className="space-y-2">
+                    <label className="block text-xs tracking-[0.2em] uppercase text-center" style={{ color: C.brown, fontFamily: serif }}>{label}</label>
+                    <div className="relative border-b py-2" style={{ borderColor: C.sand }}>
+                      <span className="absolute left-0 bottom-4 text-lg" style={{ color: C.charcoal, opacity: 0.4 }}>$</span>
+                      <input ref={ref} type="number" value={val} onChange={e => set(e.target.value)} onKeyDown={handleKeyDown}
+                        placeholder="0.00" className="w-full pl-6 bg-transparent text-3xl text-center outline-none placeholder:opacity-20"
+                        style={{ color: C.dark, fontFamily: serif }} />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
