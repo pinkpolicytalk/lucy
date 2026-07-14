@@ -39,6 +39,10 @@ const MEMO_FORMULAS: Partial<Record<CalculatorTab, (result: CalculationResult) =
     const absDiff = Math.abs(diffValue);
     return `Current premium is ${CURRENCY_FORMATTER.format(r.inputAmount)}. Quoted at new premium at ${CURRENCY_FORMATTER.format(r.details.quoted)} for a ${typeWord} of ${CURRENCY_FORMATTER.format(absDiff)}`;
   },
+  [CalculatorTab.CSL]: (r) => {
+    const { limit, increasedLiability, baseline } = r.details;
+    return `${limit === '1M' ? '$1 million' : '$2 million'} CSL: increased liability cost of ${CURRENCY_FORMATTER.format(increasedLiability)} plus baseline coverage cost of ${CURRENCY_FORMATTER.format(baseline)} brings the new estimated 6-month premium to ${CURRENCY_FORMATTER.format(r.outputAmount)}.`;
+  },
 };
 
 const ResultsCard: React.FC<ResultsCardProps> = ({ result, onCopy }) => {
@@ -73,6 +77,7 @@ const ResultsCard: React.FC<ResultsCardProps> = ({ result, onCopy }) => {
       case CalculatorTab.DIFFERENCE: return 'Premium Difference';
       case CalculatorTab.REBUILD: return 'Price per Sq Ft';
       case CalculatorTab.LIFE: return 'Estimated Life Coverage';
+      case CalculatorTab.CSL: return 'Estimated 6-Month Premium';
       default: return 'Result';
     }
   };
